@@ -1,5 +1,5 @@
 import os
-import asyncio
+from asyncio import gather
 import logging
 from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException, Body
@@ -53,7 +53,7 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
             tasks.append(scraper.fetch_from_url(url))
 
     try:
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await gather(*tasks, return_exceptions=True)
         final_results = []
         for r in results:
             if isinstance(r, Exception):
