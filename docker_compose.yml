@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # The API Engine: FastAPI backend for orchestration
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+      - ./data:/data
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      - ollama
+
+  # The Inference Layer: Ollama for local LLM execution
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    # Uncomment deploy section if you have an NVIDIA GPU for faster processing
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # The UI Layer: A placeholder for your React/Tailwind frontend
+  frontend:
+    image: nginx:alpine
+    ports:
+      - "5173:80"
+    volumes:
+      - ./dist:/usr/share/nginx/html
+
+volumes:
+  ollama_storage:

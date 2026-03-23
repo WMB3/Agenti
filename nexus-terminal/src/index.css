@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-[#050505] text-slate-200 antialiased selection:bg-indigo-500/30;
+  }
+}
+
+.glass {
+  @apply bg-white/5 border border-white/10 backdrop-blur-xl shadow-[0_8px_32px_0_rgba(0,0,0,0.37)];
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+@keyframes scan-glow {
+  0% { opacity: 0.3; transform: translateY(-100%); }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; transform: translateY(100%); }
+}
+
+.scan-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(to right, transparent, #6366f1, transparent);
+  animation: scan-glow 3s infinite linear;
+}

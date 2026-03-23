@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+playwright
+google-genai
+pydantic
+python-dotenv
+aiohttp
+py-clob-client
+py-builder-relayer-client
+web3
+eth-account

@@ -1,0 +1,26 @@
+# Node.js
+node_modules/
+dist/
+build/
+.expo/
+*.log
+
+# Python
+__pycache__/
+venv/
+.env
+*.py[cod]
+
+# Windows System Folders
+catroot2/
+$RECYCLE.BIN/
+System Volume Information/
+
+# Other
+.DS_Store
+_backup/
+
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
