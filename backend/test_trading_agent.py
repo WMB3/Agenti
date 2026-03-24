@@ -1,9 +1,9 @@
+import pytest
 import asyncio
 import json
 from ingestion.models import Signal, MarketResolution
 from polymarket_service import PolymarketTradingAgent
 
-import pytest
 @pytest.mark.asyncio
 async def test_agent():
     agent = PolymarketTradingAgent()
