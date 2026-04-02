@@ -94,6 +94,43 @@ async def test_batch_intercept(mock_fetch, test_app, dummy_item):
     mock_fetch.assert_any_call("https://example.com/car/2")
 
 @pytest.mark.asyncio
+async def test_analyze_vehicle_no_client(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini, test_app):
+    from main import CarEvaluation
+
+    mock_gemini.analyze = AsyncMock(return_value=CarEvaluation(evaluation="test", score=100))
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "evaluation" in data
+    assert "score" in data
+    assert data["evaluation"] == "test"
+    assert data["score"] == 100
+    mock_gemini.analyze.assert_called_once()
+
+@pytest.mark.asyncio
 @patch('main.scraper.fetch_from_url', new_callable=AsyncMock)
 async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item):
     # One succeeds, one fails
