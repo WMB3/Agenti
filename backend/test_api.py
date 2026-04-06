@@ -2,7 +2,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
 from ingestion.models import AuctionItem
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 @pytest.fixture
 def test_app():
@@ -125,3 +125,45 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_no_client(test_app):
+    with patch('main.gemini_client', None):
+        payload = {
+            "make": "Toyota",
+            "model": "Camry",
+            "year": 2020,
+            "mileage": 30000
+        }
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            response = await ac.post("/api/analyze", json=payload)
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_success(test_app):
+    mock_client = MagicMock()
+    mock_analyze = AsyncMock()
+
+    # Mock the return value
+    mock_analyze.return_value = {"evaluation": "Good condition", "score": 85}
+    mock_client.analyze = mock_analyze
+
+    with patch('main.gemini_client', mock_client):
+        payload = {
+            "make": "Toyota",
+            "model": "Camry",
+            "year": 2020,
+            "mileage": 30000
+        }
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            response = await ac.post("/api/analyze", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["evaluation"] == "Good condition"
+        assert data["score"] == 85
+
+        # Verify the mock was called correctly
+        mock_analyze.assert_called_once()
