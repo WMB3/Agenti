@@ -125,3 +125,56 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_no_client(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+    # Ensure gemini_client is None
+    import main
+    main.gemini_client = None
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_success(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+
+    # Mock the gemini_client
+    import main
+    from unittest.mock import MagicMock, AsyncMock
+    mock_client = MagicMock()
+    mock_aio = AsyncMock()
+
+    class MockResponse:
+        def __init__(self, text):
+            self.text = text
+
+    mock_aio.models.generate_content.return_value = MockResponse("Great car, buy it.")
+    mock_client.aio = mock_aio
+    main.gemini_client = mock_client
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evaluation"] == "Great car, buy it."
+    assert data["score"] == 80
+    mock_aio.models.generate_content.assert_called_once()
+
+    # Teardown global mock
+    main.gemini_client = None
