@@ -1,12 +1,15 @@
 import os
 import asyncio
 import logging
+import json
 from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
+from google import genai
+from google.genai import types
 
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
@@ -24,6 +27,23 @@ app.add_middleware(
 
 # --- SCRAPER SERVICE ---
 scraper = PlaywrightScraper()
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY")) if os.getenv("GEMINI_API_KEY") else None
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+    mileage: int
+    condition: str
+    damage: Optional[str] = None
+    auction_link: str
+
+class CarEvaluation(BaseModel):
+    estimated_retail_value: float
+    estimated_repair_cost: float
+    max_bid: float
+    roi_percentage: float
+    recommendation: str
 
 # --- ENDPOINTS ---
 @app.get("/")
@@ -69,6 +89,37 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
         return final_results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"""
+    Evaluate this car for auction:
+    Make/Model: {car.make} {car.model}
+    Year: {car.year}
+    Mileage: {car.mileage}
+    Condition: {car.condition}
+    Damage: {car.damage or 'None'}
+
+    Provide estimated retail value, repair costs, maximum profitable bid (assuming 20% target ROI), and a recommendation (Buy/Avoid).
+    Return strictly JSON.
+    """
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            )
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        logging.error(f"Vehicle analysis failed: {e}")
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
 if __name__ == "__main__":
     import uvicorn
