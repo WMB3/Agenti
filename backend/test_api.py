@@ -125,3 +125,61 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', None)
+async def test_analyze_vehicle_no_client(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini, test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+
+    class MockResponse:
+        def __init__(self, text):
+            self.text = text
+
+    mock_gemini.aio.models.generate_content = AsyncMock(return_value=MockResponse("Great car, buy it."))
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evaluation"] == "Great car, buy it."
+    assert data["score"] == 80
+    mock_gemini.aio.models.generate_content.assert_called_once()
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_failure(mock_gemini, test_app):
+    payload = {
+        "make": "Ford",
+        "model": "Mustang",
+        "year": 2021,
+        "mileage": 10000
+    }
+
+    mock_gemini.aio.models.generate_content = AsyncMock(side_effect=Exception("API Error"))
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert "API Error" in response.json()["detail"]
