@@ -28,6 +28,48 @@ async def test_health_check(test_app):
     assert response.json() == {"status": "online", "system": "NEXUS Omni"}
 
 @pytest.mark.asyncio
+@patch('main.gemini_client', None, create=True)
+async def test_analyze_vehicle_no_client(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_success(mock_gemini_client, test_app):
+    class MockParsed:
+        estimated_value = 15000.0
+        condition = "Good"
+
+    class MockResponse:
+        parsed = MockParsed()
+
+    mock_gemini_client.aio.models.generate_content = AsyncMock(return_value=MockResponse())
+
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2022,
+        "mileage": 15000
+    }
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["estimated_value"] == 15000.0
+    assert data["condition"] == "Good"
+    mock_gemini_client.aio.models.generate_content.assert_called_once()
+
+@pytest.mark.asyncio
 @patch('main.scraper.fetch_from_url', new_callable=AsyncMock)
 async def test_intercept_success(mock_fetch, test_app, dummy_item):
     mock_fetch.return_value = [dummy_item]
