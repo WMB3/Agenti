@@ -125,3 +125,42 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.fixture
+def dummy_car_data():
+    return {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 50000
+    }
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_no_client(test_app, dummy_car_data):
+    # Ensure gemini_client is not configured
+    with patch('main.gemini_client', None):
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            response = await ac.post("/api/analyze", json=dummy_car_data)
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini_client, test_app, dummy_car_data):
+    # Setup AsyncMock for gemini_client.aio.models.generate_content
+    mock_response = AsyncMock()
+    mock_response.text = "This is a great car."
+
+    mock_aio = AsyncMock()
+    mock_aio.models.generate_content = AsyncMock(return_value=mock_response)
+
+    mock_gemini_client.aio = mock_aio
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=dummy_car_data)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evaluation"] == "This is a great car."
+    assert data["score"] == 80
