@@ -8,6 +8,18 @@ from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
 
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+    mileage: int
+
+class CarEvaluation(BaseModel):
+    evaluation: str
+    score: int
+
+gemini_client = None
+
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
 
@@ -69,6 +81,15 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
         return final_results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    response = await gemini_client.analyze(car)
+    return response
 
 if __name__ == "__main__":
     import uvicorn
