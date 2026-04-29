@@ -125,3 +125,43 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.fixture
+def dummy_car_data():
+    return {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_gemini_client_missing(test_app, dummy_car_data):
+    """Test analyze_vehicle when gemini_client is None."""
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=dummy_car_data)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini_client, test_app, dummy_car_data):
+    """Test analyze_vehicle happy path with a mocked gemini_client."""
+    # Create a dummy return value that matches the CarEvaluation model
+    mock_evaluation = {"evaluation": "Good condition", "score": 85}
+
+    # Configure the async mock for the analyze method
+    mock_gemini_client.analyze = AsyncMock(return_value=mock_evaluation)
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=dummy_car_data)
+
+    assert response.status_code == 200
+    assert response.json() == mock_evaluation
+
+    # Verify the mock was called with a CarData instance matching our dummy data
+    mock_gemini_client.analyze.assert_called_once()
+    called_arg = mock_gemini_client.analyze.call_args[0][0]
+    assert called_arg.make == dummy_car_data["make"]
+    assert called_arg.model == dummy_car_data["model"]
