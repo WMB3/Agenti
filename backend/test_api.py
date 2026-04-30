@@ -125,3 +125,31 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_gemini_not_configured(test_app):
+    payload = {"make": "Toyota", "model": "Camry", "year": 2015, "mileage": 100000}
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini_client, test_app):
+    from main import CarEvaluation
+
+    mock_response = CarEvaluation(evaluation="Good condition", score=85)
+    mock_analyze = AsyncMock(return_value=mock_response)
+    mock_gemini_client.analyze = mock_analyze
+
+    payload = {"make": "Toyota", "model": "Camry", "year": 2015, "mileage": 100000}
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evaluation"] == "Good condition"
+    assert data["score"] == 85
+    mock_analyze.assert_called_once()
