@@ -131,7 +131,7 @@ class PlaywrightScraper(ScraperSource):
                 {text_content[:15000]}
                 """
 
-                response = client.models.generate_content(
+                response = await client.aio.models.generate_content(
                     model=self.model_id,
                     contents=prompt,
                     config=types.GenerateContentConfig(
