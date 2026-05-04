@@ -4,9 +4,27 @@ import logging
 from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
+import json
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+    mileage: int
+
+class CarEvaluation(BaseModel):
+    estimated_value: float
+    condition: str
+    recommendation: str
+
+gemini_client = None
+if os.getenv("GEMINI_API_KEY"):
+    gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
@@ -69,6 +87,26 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
         return final_results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"Evaluate car: {car.year} {car.make} {car.model} with {car.mileage} miles. Provide estimated_value, condition, and recommendation as JSON."
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            )
+        )
+        data = json.loads(response.text)
+        return CarEvaluation(**data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to analyze vehicle: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
