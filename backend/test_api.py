@@ -125,3 +125,73 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini, test_app):
+    mock_response = AsyncMock()
+    mock_response.text = '{"estimated_value": 15000.0, "condition": "Good", "recommendation": "Buy"}'
+
+    mock_models = AsyncMock()
+    mock_models.generate_content.return_value = mock_response
+
+    mock_aio = AsyncMock()
+    mock_aio.models = mock_models
+
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["estimated_value"] == 15000.0
+    assert data["condition"] == "Good"
+    assert data["recommendation"] == "Buy"
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', None)
+async def test_analyze_vehicle_missing_client(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_error(mock_gemini, test_app):
+    mock_models = AsyncMock()
+    mock_models.generate_content.side_effect = Exception("API Error")
+
+    mock_aio = AsyncMock()
+    mock_aio.models = mock_models
+
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert "Failed to analyze vehicle" in response.json()["detail"]
