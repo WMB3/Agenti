@@ -1,3 +1,4 @@
+import json
 import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
@@ -125,3 +126,55 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_gemini_not_configured(test_app):
+    # gemini_client is None by default in our current setup
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 30000
+    }
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_success(mock_gemini_client, test_app):
+    # Create a mock response object that has a 'text' attribute
+    class MockResponse:
+        def __init__(self, text):
+            self.text = text
+
+    mock_eval = {
+        "is_good_deal": True,
+        "estimated_value": 22000.0,
+        "reasoning": "Good price for this mileage."
+    }
+
+    # Set up the async mock for generate_content
+    mock_generate_content = AsyncMock(return_value=MockResponse(json.dumps(mock_eval)))
+    mock_gemini_client.aio.models.generate_content = mock_generate_content
+
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2018,
+        "mileage": 50000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_good_deal"] is True
+    assert data["estimated_value"] == 22000.0
+    assert data["reasoning"] == "Good price for this mileage."
+
+    mock_generate_content.assert_called_once()
