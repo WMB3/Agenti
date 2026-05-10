@@ -1,6 +1,6 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
-from main import app
+from main import app, CarEvaluation
 from ingestion.models import AuctionItem
 from unittest.mock import AsyncMock, patch
 
@@ -18,7 +18,6 @@ def dummy_item():
         auction_fees=500.0,
         source="test"
     )
-
 
 @pytest.mark.asyncio
 async def test_health_check(test_app):
@@ -68,8 +67,6 @@ async def test_intercept_failure(mock_fetch, test_app):
 @pytest.mark.asyncio
 @patch('main.scraper.fetch_from_url', new_callable=AsyncMock)
 async def test_batch_intercept(mock_fetch, test_app, dummy_item):
-    # Setup mock to return different things for different URLs
-    # For simplicity, returning the same item, but we will test it returns a list of lists.
     mock_fetch.return_value = [dummy_item]
 
     payloads = [
@@ -88,7 +85,6 @@ async def test_batch_intercept(mock_fetch, test_app, dummy_item):
     assert len(data[0]) == 1
     assert data[0][0]["id"] == "test-1"
 
-    # Assert fetch_from_url was called twice
     assert mock_fetch.call_count == 2
     mock_fetch.assert_any_call("https://example.com/car/1")
     mock_fetch.assert_any_call("https://example.com/car/2")
@@ -96,7 +92,6 @@ async def test_batch_intercept(mock_fetch, test_app, dummy_item):
 @pytest.mark.asyncio
 @patch('main.scraper.fetch_from_url', new_callable=AsyncMock)
 async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item):
-    # One succeeds, one fails
     async def side_effect(url):
         if url == "https://example.com/car/1":
             return [dummy_item]
@@ -118,10 +113,34 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
     assert isinstance(data, list)
     assert len(data) == 2
 
-    # First one succeeded
     assert isinstance(data[0], list)
     assert len(data[0]) == 1
     assert data[0][0]["id"] == "test-1"
 
-    # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_gemini_not_configured(test_app):
+    payload = {"make": "Toyota", "model": "Camry", "year": 2015, "mileage": 100000}
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client')
+async def test_analyze_vehicle_success(mock_gemini_client, test_app):
+    mock_response = CarEvaluation(evaluation="Good condition", score=85)
+    mock_analyze = AsyncMock(return_value=mock_response)
+    mock_gemini_client.analyze = mock_analyze
+
+    payload = {"make": "Toyota", "model": "Camry", "year": 2015, "mileage": 100000}
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evaluation"] == "Good condition"
+    assert data["score"] == 85
+    mock_analyze.assert_called_once()
