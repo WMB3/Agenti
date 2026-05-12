@@ -125,3 +125,68 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_success(mock_gemini_client, test_app):
+    class DummyModel:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+        def model_dump(self):
+            return self.__dict__
+
+        def dict(self):
+            return self.__dict__
+
+    dummy_evaluation = DummyModel(
+        make="Toyota",
+        model="Camry",
+        year=2020,
+        condition="Good",
+        estimated_value=15000.0,
+        recommendation="Buy"
+    )
+
+    mock_response = AsyncMock()
+    mock_response.parsed = dummy_evaluation
+
+    # Mocking the async generate_content method
+    mock_gemini_client.aio.models.generate_content.return_value = mock_response
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 50000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    # We unconditionally assert the expected behavior
+    assert response.status_code == 200
+    data = response.json()
+    assert data["make"] == "Toyota"
+    assert data["model"] == "Camry"
+    assert data["year"] == 2020
+    assert data["condition"] == "Good"
+    assert data["estimated_value"] == 15000.0
+    assert data["recommendation"] == "Buy"
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', new=None, create=True)
+async def test_analyze_vehicle_no_gemini_client(test_app):
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2018,
+        "mileage": 60000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    # We unconditionally assert the expected behavior for missing client
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
