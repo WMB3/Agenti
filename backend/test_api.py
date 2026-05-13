@@ -3,6 +3,7 @@ from httpx import AsyncClient, ASGITransport
 from main import app
 from ingestion.models import AuctionItem
 from unittest.mock import AsyncMock, patch
+from pydantic import BaseModel
 
 @pytest.fixture
 def test_app():
@@ -18,6 +19,18 @@ def dummy_item():
         auction_fees=500.0,
         source="test"
     )
+
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+    mileage: int
+
+class CarEvaluation(BaseModel):
+    condition: str
+    estimated_value: float
+    notes: str
 
 
 @pytest.mark.asyncio
@@ -125,3 +138,45 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_success(mock_gemini_client, test_app):
+    # Create dummy evaluation
+    dummy_eval = CarEvaluation(
+        condition="Good",
+        estimated_value=15000.0,
+        notes="Looks solid."
+    )
+
+    # Mock the async call to generate_content
+    mock_response = AsyncMock()
+    mock_response.parsed = dummy_eval
+    mock_gemini_client.aio.models.generate_content.return_value = mock_response
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020,
+        "mileage": 40000
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["condition"] == "Good"
+    assert data["estimated_value"] == 15000.0
+    assert data["notes"] == "Looks solid."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', None, create=True)
+async def test_analyze_vehicle_no_gemini_client(test_app):
+    payload = {"make": "Honda", "model": "Civic", "year": 2019, "mileage": 50000}
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
