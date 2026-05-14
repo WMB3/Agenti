@@ -1,8 +1,9 @@
+from pydantic import BaseModel
 import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
 from ingestion.models import AuctionItem
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 
 @pytest.fixture
 def test_app():
@@ -125,3 +126,47 @@ async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item)
 
     # Second one failed and returns empty list per logic in main.py
     assert data[1] == []
+
+
+class DummyCarEvaluation(BaseModel):
+    analysis: str = "good"
+    estimated_value: float = 25000.0
+    recommendation: str = "buy"
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_success(mock_gemini, test_app):
+    mock_response = MagicMock()
+    # Mocking google-genai SDK response for structured outputs
+    mock_response.parsed = DummyCarEvaluation()
+
+    mock_generate_content = AsyncMock(return_value=mock_response)
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = mock_generate_content
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', new=None, create=True)
+async def test_analyze_vehicle_gemini_not_configured(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Gemini client not configured."
