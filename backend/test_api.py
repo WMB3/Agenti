@@ -155,6 +155,11 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 200
+    data = response.json()
+    assert data["analysis"] == "good"
+    assert data["estimated_value"] == 25000.0
+    assert data["recommendation"] == "buy"
+
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
@@ -170,3 +175,22 @@ async def test_analyze_vehicle_gemini_not_configured(test_app):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_gemini_error(mock_gemini, test_app):
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = AsyncMock(side_effect=Exception("Gemini API error"))
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert "Gemini API error" in response.json()["detail"]
