@@ -155,6 +155,10 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 200
+    data = response.json()
+    assert data["analysis"] == "good"
+    assert data["estimated_value"] == pytest.approx(25000.0)
+    assert data["recommendation"] == "buy"
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
