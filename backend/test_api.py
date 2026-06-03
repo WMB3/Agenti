@@ -154,7 +154,13 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
     async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
         response = await ac.post("/api/analyze", json=payload)
 
+    mock_gemini.aio.models.generate_content.assert_called_once()
+
     assert response.status_code == 200
+    data = response.json()
+    assert data["analysis"] == "good"
+    assert data["recommendation"] == "buy"
+    assert data["estimated_value"] == pytest.approx(25000.0)
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
