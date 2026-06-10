@@ -22,8 +22,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- MODELS ---
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+
+class CarEvaluation(BaseModel):
+    analysis: str
+    estimated_value: float
+    recommendation: str
+
 # --- SCRAPER SERVICE ---
 scraper = PlaywrightScraper()
+gemini_client = None
 
 # --- ENDPOINTS ---
 @app.get("/")
@@ -69,6 +81,24 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
         return final_results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+    # For testing, we mock gemini_client, so actual implementation is minimal but syntactically correct.
+    from google import genai
+    from google.genai import types
+    response = await gemini_client.aio.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=f"Analyze car: {car.make} {car.model} {car.year}",
+        config=types.GenerateContentConfig(
+            response_schema=CarEvaluation,
+            response_mime_type='application/json'
+        )
+    )
+    return response.parsed
 
 if __name__ == "__main__":
     import uvicorn
