@@ -154,7 +154,15 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
     async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
         response = await ac.post("/api/analyze", json=payload)
 
+    # Avoid conditional assertions to bypass missing or unimplemented endpoints.
+    # The tests should unconditionally assert expected behavior so they properly fail if functionality is absent.
     assert response.status_code == 200
+    data = response.json()
+    assert data["analysis"] == "good"
+    assert data["estimated_value"] == pytest.approx(25000.0)
+    assert data["recommendation"] == "buy"
+
+    mock_gemini.aio.models.generate_content.assert_called_once()
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
