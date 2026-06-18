@@ -140,10 +140,7 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
     # Mocking google-genai SDK response for structured outputs
     mock_response.parsed = DummyCarEvaluation()
 
-    mock_generate_content = AsyncMock(return_value=mock_response)
-    mock_aio = MagicMock()
-    mock_aio.models.generate_content = mock_generate_content
-    mock_gemini.aio = mock_aio
+    mock_gemini.aio.models.generate_content = AsyncMock(return_value=mock_response)
 
     payload = {
         "make": "Toyota",
@@ -155,6 +152,8 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 200
+    assert response.json() == {"analysis": "good", "estimated_value": 25000.0, "recommendation": "buy"}
+    mock_gemini.aio.models.generate_content.assert_called_once()
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
