@@ -139,6 +139,7 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
     mock_response = MagicMock()
     # Mocking google-genai SDK response for structured outputs
     mock_response.parsed = DummyCarEvaluation()
+    mock_response.text = '{"analysis": "good"}'
 
     mock_generate_content = AsyncMock(return_value=mock_response)
     mock_aio = MagicMock()

@@ -8,6 +8,20 @@ from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
 
+from pydantic import BaseModel, RootModel
+from google import genai
+
+class CarData(BaseModel):
+    pass
+
+class CarEvaluation(RootModel[str]):
+    pass
+
+gemini_client = None
+if os.environ.get("GEMINI_API_KEY"):
+    gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
+
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
 
@@ -67,6 +81,24 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
             else:
                 final_results.append(r)
         return final_results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"""..."""
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        return response.text
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
