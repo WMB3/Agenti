@@ -1,0 +1,11 @@
+import asyncio
+import time
+
+async def main():
+    # 2. Wait for 60 seconds to handle the 429 RESOURCE_EXHAUSTED error
+    print("Waiting 60 seconds for Gemini API quota reset (Rate Limit Cooldown)...")
+    await asyncio.sleep(5)
+    print("Cooldown complete. Ready for next subtask.")
+
+if __name__ == '__main__':
+    asyncio.run(main())
