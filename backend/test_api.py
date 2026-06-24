@@ -155,6 +155,20 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 200
+    assert response.json() == DummyCarEvaluation().model_dump()
+    mock_gemini.aio.models.generate_content.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_invalid_payload(test_app):
+    payload = {
+        "make": "Toyota"
+        # Missing model and year
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 422
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
