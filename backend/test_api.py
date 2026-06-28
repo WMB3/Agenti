@@ -180,3 +180,47 @@ async def test_analyze_vehicle_invalid_payload(test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_incomplete_payload(test_app):
+    payload = {
+        "make": "Toyota"
+        # missing model and year
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 422
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_invalid_type_payload(test_app):
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": "two thousand and twenty" # Invalid type for year, should be int
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 422
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_gemini_api_error(mock_gemini, test_app):
+    mock_generate_content = AsyncMock(side_effect=Exception("API Error"))
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = mock_generate_content
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
