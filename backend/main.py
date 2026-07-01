@@ -5,6 +5,8 @@ from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from google import genai
+from google.genai import types
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
 
@@ -67,6 +69,37 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
             else:
                 final_results.append(r)
         return final_results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+
+class CarEvaluation(BaseModel):
+    analysis: str
+    estimated_value: float
+    recommendation: str
+
+gemini_client = None
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"""..."""
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(response_schema=CarEvaluation, response_mime_type='application/json')
+        )
+        return response.parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
