@@ -1,3 +1,4 @@
+import asyncio
 from pydantic import BaseModel
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -154,8 +155,15 @@ async def test_analyze_vehicle_success(mock_gemini, test_app):
     async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
         response = await ac.post("/api/analyze", json=payload)
 
+
     assert response.status_code == 200
+
     mock_gemini.aio.models.generate_content.assert_called_once()
+
+    data = response.json()
+    assert data["analysis"] == "good"
+    assert data["estimated_value"] == pytest.approx(25000.0)
+    assert data["recommendation"] == "buy"
 
 @pytest.mark.asyncio
 @patch('main.gemini_client', new=None, create=True)
@@ -180,3 +188,53 @@ async def test_analyze_vehicle_invalid_payload(test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_unhandled_exception(mock_gemini, test_app):
+    mock_generate_content = AsyncMock(side_effect=Exception("Simulated API failure"))
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = mock_generate_content
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2018
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_performance_baseline(mock_gemini, test_app):
+    async def mock_generate_content_sleep(*args, **kwargs):
+        await asyncio.sleep(0.1)
+        mock_response = MagicMock()
+        class DummyCarEvaluation(BaseModel):
+            analysis: str = "good"
+            estimated_value: float = 25000.0
+            recommendation: str = "buy"
+        mock_response.parsed = DummyCarEvaluation()
+        return mock_response
+
+    mock_generate_content = AsyncMock(side_effect=mock_generate_content_sleep)
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = mock_generate_content
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Ford",
+        "model": "Mustang",
+        "year": 2021
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        tasks = [ac.post("/api/analyze", json=payload) for _ in range(5)]
+        responses = await asyncio.gather(*tasks)
+
+    for response in responses:
+        assert response.status_code == 200
