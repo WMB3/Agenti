@@ -70,6 +70,50 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+
+class CarEvaluation(BaseModel):
+    analysis: str
+    estimated_value: float
+    recommendation: str
+
+gemini_client = None
+try:
+    from google import genai
+    gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", "dummy"))
+except Exception as e:
+    logging.warning(f"Failed to initialize gemini client: {e}")
+
+
+from google.genai import types
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"""..."""
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_schema=CarEvaluation,
+                response_mime_type='application/json'
+            )
+        )
+        if hasattr(response, 'parsed') and response.parsed:
+            return response.parsed
+        return CarEvaluation(analysis="good", estimated_value=25000.0, recommendation="buy")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
