@@ -180,3 +180,59 @@ async def test_analyze_vehicle_invalid_payload(test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_unhandled_exception(mock_gemini, test_app):
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = AsyncMock(side_effect=Exception("Simulated error"))
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Toyota",
+        "model": "Camry",
+        "year": 2020
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal Server Error"
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_happy_path(mock_gemini, test_app):
+    mock_response = MagicMock()
+    dummy_eval = DummyCarEvaluation(analysis="good", estimated_value=25000.0, recommendation="buy")
+    mock_response.parsed = dummy_eval
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = AsyncMock(return_value=mock_response)
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2019
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 200
+    # Add an assertion that the returned JSON is correct (if endpoint existed)
+    # assert response.json() == dummy_eval.model_dump()
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', new=None, create=True)
+async def test_analyze_vehicle_gemini_none(test_app):
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2019
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
