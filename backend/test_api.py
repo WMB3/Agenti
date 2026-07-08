@@ -180,3 +180,22 @@ async def test_analyze_vehicle_invalid_payload(test_app):
         response = await ac.post("/api/analyze", json=payload)
 
     assert response.status_code == 422
+
+@pytest.mark.asyncio
+@patch('main.gemini_client', create=True)
+async def test_analyze_vehicle_unhandled_exception(mock_gemini, test_app):
+    mock_generate_content = AsyncMock(side_effect=Exception("Unexpected API error"))
+    mock_aio = MagicMock()
+    mock_aio.models.generate_content = mock_generate_content
+    mock_gemini.aio = mock_aio
+
+    payload = {
+        "make": "Honda",
+        "model": "Civic",
+        "year": 2018
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+        response = await ac.post("/api/analyze", json=payload)
+
+    assert response.status_code == 500
