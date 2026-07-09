@@ -7,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
+from google import genai
+from google.genai import types
+
+gemini_api_key = os.environ.get("GEMINI_API_KEY")
+gemini_client = genai.Client(api_key=gemini_api_key) if gemini_api_key else None
+
 
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
@@ -70,7 +76,37 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+
+class CarEvaluation(BaseModel):
+    analysis: str
+    estimated_value: float
+    recommendation: str
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"""..."""
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(response_schema=CarEvaluation, response_mime_type='application/json')
+        )
+        return response.parsed
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
+
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
