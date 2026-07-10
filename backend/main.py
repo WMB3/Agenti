@@ -8,6 +8,26 @@ from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
 
+# Need a gemini client and models config to mimic the prompt's issue.
+import google.genai as genai
+from google.genai import types
+
+gemini_client = None
+try:
+    gemini_client = genai.Client()
+except Exception as e:
+    logging.warning(f"Could not initialize gemini client: {e}")
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+
+class CarEvaluation(BaseModel):
+    analysis: str
+    estimated_value: float
+    recommendation: str
+
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
 
@@ -69,6 +89,25 @@ async def handle_batch_intercept(payloads: List[Dict] = Body(...)):
         return final_results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"Analyze this vehicle: {car.year} {car.make} {car.model}"
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(response_schema=CarEvaluation, response_mime_type='application/json')
+        )
+        return response.parsed
+    except Exception as e:
+        logging.error(f"Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to analyze vehicle")
 
 if __name__ == "__main__":
     import uvicorn
