@@ -95,6 +95,67 @@ async def test_batch_intercept(mock_fetch, test_app, dummy_item):
     mock_fetch.assert_any_call("https://example.com/car/2")
 
 @pytest.mark.asyncio
+async def test_analyze_vehicle_no_client(test_app):
+    with patch("main.gemini_client", new=None):
+        payload = {
+            "make": "Toyota",
+            "model": "Camry",
+            "year": 2020,
+            "mileage": 30000
+        }
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            response = await ac.post("/api/analyze", json=payload)
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Gemini client not configured."
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_success(test_app):
+    class MockResponse:
+        def __init__(self, text):
+            self.text = text
+
+    mock_client = AsyncMock()
+    # Mocking gemini_client.aio.models.generate_content
+    mock_client.aio.models.generate_content.return_value = MockResponse(
+        text='{"estimated_value": 25000.0, "condition": "Excellent", "recommendation": "Buy"}'
+    )
+
+    with patch("main.gemini_client", new=mock_client):
+        payload = {
+            "make": "Honda",
+            "model": "Civic",
+            "year": 2021,
+            "mileage": 15000
+        }
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            response = await ac.post("/api/analyze", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["estimated_value"] == 25000.0
+        assert data["condition"] == "Excellent"
+        assert data["recommendation"] == "Buy"
+
+@pytest.mark.asyncio
+async def test_analyze_vehicle_gemini_error(test_app):
+    mock_client = AsyncMock()
+    mock_client.aio.models.generate_content.side_effect = Exception("API error")
+
+    with patch("main.gemini_client", new=mock_client):
+        payload = {
+            "make": "Honda",
+            "model": "Civic",
+            "year": 2021,
+            "mileage": 15000
+        }
+        async with AsyncClient(transport=ASGITransport(app=test_app), base_url="http://test") as ac:
+            response = await ac.post("/api/analyze", json=payload)
+
+        assert response.status_code == 500
+        assert "Gemini analysis failed" in response.json()["detail"]
+
+@pytest.mark.asyncio
 @patch('main.scraper.fetch_from_url', new_callable=AsyncMock)
 async def test_batch_intercept_partial_failure(mock_fetch, test_app, dummy_item):
     # One succeeds, one fails

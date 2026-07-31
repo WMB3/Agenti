@@ -8,6 +8,18 @@ from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
 
+# --- MODELS ---
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+    mileage: int
+
+class CarEvaluation(BaseModel):
+    estimated_value: float
+    condition: str
+    recommendation: str
+
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
 
@@ -25,7 +37,32 @@ app.add_middleware(
 # --- SCRAPER SERVICE ---
 scraper = PlaywrightScraper()
 
+# --- AI SERVICE ---
+# TODO: Initialize gemini_client with google.genai.Client in a startup event
+gemini_client = None
+
 # --- ENDPOINTS ---
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"Evaluate a {car.year} {car.make} {car.model} with {car.mileage} miles."
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": CarEvaluation.model_json_schema(),
+            }
+        )
+        return CarEvaluation.model_validate_json(response.text)
+    except Exception as e:
+        logging.error(f"Gemini analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Gemini analysis failed: {str(e)}")
+
 @app.get("/")
 async def health_check():
     return {"status": "online", "system": "NEXUS Omni"}
