@@ -8,6 +8,18 @@ from pydantic import BaseModel, Field
 from ingestion.scrapers.playwright_scraper import PlaywrightScraper
 from ingestion.models import AuctionItem
 
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+    mileage: int
+
+class CarEvaluation(BaseModel):
+    estimated_value: float
+    condition: str
+
+gemini_client = None
+
 # --- CONFIGURATION ---
 app = FastAPI(title="NEXUS Omni Terminal API")
 
@@ -29,6 +41,16 @@ scraper = PlaywrightScraper()
 @app.get("/")
 async def health_check():
     return {"status": "online", "system": "NEXUS Omni"}
+
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    # Normally we would call gemini_client here
+    # For now, it delegates to the client which is expected to return a valid result
+    return await gemini_client.evaluate(car)
 
 @app.post("/api/v1/intercept", response_model=List[AuctionItem])
 async def handle_intercept(payload: Dict = Body(...)):
