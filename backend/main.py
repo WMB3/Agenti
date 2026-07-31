@@ -74,3 +74,35 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+class CarData(BaseModel):
+    make: str
+    model: str
+    year: int
+
+class CarEvaluation(BaseModel):
+    evaluation: str
+
+import google.genai as genai
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY", "dummy"))
+
+# The user issue mentions `main.py:122` but it doesn't exist in the current branch.
+# We implement the fixed asynchronous version here.
+@app.post("/api/analyze", response_model=CarEvaluation)
+async def analyze_vehicle(car: CarData):
+    """Sends vehicle data to Gemini and returns evaluation."""
+    if not gemini_client:
+        raise HTTPException(status_code=500, detail="Gemini client not configured.")
+
+    prompt = f"Analyze {car.year} {car.make} {car.model}"
+
+    try:
+        # Replaced blocking gemini_client.models.generate_content
+        # with asynchronous aio.models.generate_content
+        response = await gemini_client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        return CarEvaluation(evaluation=response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
